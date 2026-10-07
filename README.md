@@ -12,6 +12,7 @@ across a folder, a file selection, or a web page.
 Everything runs **locally on your computer**. No data is uploaded anywhere; the
 model, the files, and the results all stay on disk.
 
+You can wtach the Demo.mp4 for app demo.
 ---
 
 ## What it does
