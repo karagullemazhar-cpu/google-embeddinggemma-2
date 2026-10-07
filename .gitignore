@@ -1,0 +1,20 @@
+# Runtime / generated
+winvenv/
+.venv/
+__pycache__/
+*.pyc
+hf_cache/
+cache/
+matched/
+logs/
+baslat.log
+server*.log
+*.log
+
+# Local scratch files (not part of the app)
+tmp_*.py
+tmp_*.html
+tmp_*.js
+eq_check.js
+served.html
+app_backup*.py

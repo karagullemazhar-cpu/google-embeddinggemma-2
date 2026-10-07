@@ -1,0 +1,567 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>EmbeddingGemma 2 — Çok Modlu Arama</title>
+<style>
+:root{
+  --bg:#0a0b11; --panel:rgba(22,25,38,.72); --panel2:#141726; --line:rgba(255,255,255,.08);
+  --txt:#e9ecf4; --mut:#9aa3b8; --mut2:#6c7590;
+  --acc:#6366f1; --acc2:#a855f7; --grad:linear-gradient(135deg,#6366f1,#a855f7);
+  --ok:#34d399; --mid:#fbbf24; --low:#fb7185; --info:#38bdf8; --err:#f87171;
+}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;color:var(--txt);
+ font:15px/1.55 "Inter","Segoe UI Variable","Segoe UI",system-ui,sans-serif;
+ background:
+  radial-gradient(900px 420px at 12% -8%,rgba(99,102,241,.20),transparent 60%),
+  radial-gradient(760px 380px at 92% 4%,rgba(168,85,247,.16),transparent 55%),
+  radial-gradient(600px 500px at 50% 110%,rgba(56,189,248,.08),transparent 60%),
+  var(--bg)}
+.wrap{max-width:1060px;margin:0 auto;padding:22px 20px 70px}
+/* header */
+.top{display:flex;align-items:center;gap:14px;margin-bottom:16px;flex-wrap:wrap}
+.logo{width:44px;height:44px;border-radius:13px;background:var(--grad);display:flex;align-items:center;justify-content:center;font-size:21px;box-shadow:0 8px 24px rgba(99,102,241,.45);flex:none}
+.top h1{font-size:19px;margin:0}
+.top .tag{color:var(--mut);font-size:12.5px;margin-top:1px}
+.spacer{flex:1}
+.status{display:inline-flex;align-items:center;gap:7px;font-size:12px;font-weight:600;color:var(--mut);
+ border:1px solid var(--line);background:rgba(255,255,255,.04);border-radius:999px;padding:5px 13px}
+.status .dot{width:7px;height:7px;border-radius:50%;background:var(--ok);box-shadow:0 0 8px var(--ok);animation:pl 2s infinite}
+.status.bad .dot{background:var(--err);box-shadow:0 0 8px var(--err)}
+@keyframes pl{50%{opacity:.45}}
+/* stale-server banner */
+#svwarn{display:none;background:linear-gradient(135deg,rgba(248,113,113,.16),rgba(251,191,36,.12));
+ border:1px solid rgba(248,113,113,.55);border-radius:14px;padding:13px 16px;margin-bottom:16px;
+ color:#fecaca;font-size:13.5px;font-weight:600;line-height:1.5}
+#svwarn code{background:rgba(0,0,0,.35);border-radius:6px;padding:1px 7px;font-size:12.5px}
+/* panel */
+.panel{background:var(--panel);backdrop-filter:blur(14px);border:1px solid var(--line);border-radius:22px;
+ padding:22px;box-shadow:0 18px 50px rgba(0,0,0,.45);margin-bottom:18px}
+.zone+.zone{margin-top:18px;padding-top:18px;border-top:1px dashed rgba(255,255,255,.09)}
+.zlabel{font-size:11px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;color:var(--mut2);margin-bottom:10px;display:flex;align-items:center;gap:8px}
+.zlabel .n{width:18px;height:18px;border-radius:6px;background:var(--grad);color:#fff;font-size:10px;display:inline-flex;align-items:center;justify-content:center}
+/* search box */
+.sbox{background:#0d1020;border:1px solid var(--line);border-radius:16px;padding:14px 16px 12px;transition:border-color .18s,box-shadow .18s}
+.sbox:focus-within{border-color:rgba(99,102,241,.65);box-shadow:0 0 0 4px rgba(99,102,241,.16)}
+.sbox textarea{width:100%;background:transparent;border:0;outline:0;resize:vertical;min-height:72px;color:var(--txt);font:inherit;font-size:15.5px}
+.sbox textarea::placeholder{color:#565f7a}
+.srow{display:flex;align-items:center;gap:10px;margin-top:8px;flex-wrap:wrap}
+.mini{display:inline-flex;align-items:center;gap:7px;background:rgba(255,255,255,.05);border:1px solid var(--line);
+ color:var(--txt);border-radius:10px;padding:7px 14px;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;transition:background .15s,border-color .15s}
+.mini:hover{background:rgba(99,102,241,.18);border-color:rgba(99,102,241,.5)}
+.mini:focus-visible{outline:2px solid var(--info);outline-offset:2px}
+.count{font-size:12px;color:var(--ok);font-weight:700}
+.hint{color:var(--mut2);font-size:12px}
+/* chips */
+.chips{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}
+.chips:empty{margin-top:0}
+.chip{background:#0d1020;border:1px solid var(--line);border-radius:999px;padding:5px 6px 5px 12px;font-size:12px;display:flex;gap:8px;align-items:center;max-width:100%;animation:pop .18s ease-out}
+@keyframes pop{from{transform:scale(.92);opacity:0}}
+.chip .fname{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:250px;color:#d5dbe8}
+.chip .x{padding:2px 9px;font-size:12px;background:#262c42;border:0;color:#fff;border-radius:999px;cursor:pointer;font-family:inherit}
+.chip .x:hover{background:var(--err)}
+.chip .k{font-size:9.5px;font-weight:800;border-radius:6px;padding:2px 7px;background:#262c42;color:var(--ok);text-transform:uppercase;flex:none}
+.chip .k.video{background:rgba(251,191,36,.16);color:var(--mid)}
+.chip .k.audio{background:rgba(56,189,248,.16);color:var(--info)}
+.chip .k.text{background:rgba(52,211,153,.15);color:var(--ok)}
+.chip .k.url{background:rgba(216,180,254,.16);color:#d8b4fe}
+/* segmented */
+.seg{display:flex;gap:6px;background:#0d1020;border:1px solid var(--line);border-radius:14px;padding:6px;flex-wrap:wrap}
+.seg button{flex:1;min-width:110px;background:transparent;border:0;color:var(--mut);border-radius:10px;padding:10px 10px;
+ font-size:13.5px;font-weight:700;cursor:pointer;font-family:inherit;transition:all .15s}
+.seg button:hover{color:var(--txt);background:rgba(255,255,255,.05)}
+.seg button[aria-pressed="true"]{background:var(--grad);color:#fff;box-shadow:0 4px 14px rgba(99,102,241,.4)}
+.seg button:focus-visible{outline:2px solid var(--info);outline-offset:1px}
+.srcrow{display:flex;gap:8px;margin-top:12px;align-items:center;flex-wrap:wrap}
+input[type=text],input[type=number]{background:#0d1020;border:1px solid var(--line);color:var(--txt);border-radius:11px;
+ padding:10px 13px;font:inherit;font-size:14px;transition:border-color .15s,box-shadow .15s}
+input[type=text]:focus,input[type=number]:focus{outline:0;border-color:rgba(99,102,241,.65);box-shadow:0 0 0 3px rgba(99,102,241,.16)}
+input.grow{flex:1;min-width:200px}
+.note{color:var(--mut2);font-size:12.5px;margin-top:8px}
+/* opts */
+.opts{display:flex;gap:22px;align-items:center;margin-top:18px;flex-wrap:wrap}
+.opt{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--mut);font-weight:600}
+.opt output{min-width:44px;text-align:center;font-weight:800;color:var(--txt);background:rgba(255,255,255,.06);
+ border-radius:8px;padding:3px 8px;font-variant-numeric:tabular-nums}
+input[type=range]{-webkit-appearance:none;appearance:none;width:150px;height:5px;border-radius:99px;background:#262c42;outline:0}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:17px;height:17px;border-radius:50%;background:var(--grad);
+ border:2px solid #0d1020;cursor:pointer;box-shadow:0 2px 8px rgba(99,102,241,.6)}
+input[type=range]::-moz-range-thumb{width:15px;height:15px;border-radius:50%;background:#8b5cf6;border:2px solid #0d1020;cursor:pointer}
+.go{margin-left:auto;background:var(--grad);border:0;color:#fff;font-weight:800;font-size:15px;font-family:inherit;
+ padding:13px 40px;border-radius:14px;cursor:pointer;box-shadow:0 8px 26px rgba(99,102,241,.5);transition:transform .1s,filter .15s}
+.go:hover{filter:brightness(1.12)}
+.go:active{transform:translateY(1px) scale(.99)}
+.go:disabled{opacity:.45;cursor:not-allowed;box-shadow:none}
+.stopbtn{background:linear-gradient(135deg,#ef4444,#dc2626);border:0;color:#fff;font-weight:800;font-size:15px;
+ font-family:inherit;padding:13px 30px;border-radius:14px;cursor:pointer;box-shadow:0 8px 26px rgba(239,68,68,.4);
+ transition:transform .1s,filter .15s;margin-left:10px}
+.stopbtn:hover{filter:brightness(1.1)}
+.stopbtn:active{transform:translateY(1px) scale(.99)}
+.stopbtn:disabled{opacity:.45;cursor:not-allowed;box-shadow:none}
+.stopbtn:focus-visible{outline:2px solid var(--info);outline-offset:3px}
+.go:focus-visible{outline:2px solid var(--info);outline-offset:3px}
+/* progress + msg */
+#bar{height:7px;background:#1a1e30;border-radius:99px;overflow:hidden;margin-top:16px;display:none}
+#bar.on{display:block}
+#bar div{height:100%;width:34%;background:var(--grad);border-radius:99px;animation:sl 1.05s ease-in-out infinite alternate}
+@keyframes sl{from{transform:translateX(-10%)}to{transform:translateX(220%)}}
+#msg{margin-top:12px;min-height:20px;font-size:13px;color:var(--mut2)}
+#msg.err{color:var(--err);white-space:pre-wrap}
+/* results */
+#rescard{display:none}
+.rhead{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+.rhead b{font-size:17px}
+.rhead .path{font-size:11.5px;color:var(--mut2);font-family:ui-monospace,Consolas,monospace;word-break:break-all;flex:1;min-width:180px}
+.cbtn{background:rgba(255,255,255,.06);border:1px solid var(--line);color:var(--mut);border-radius:9px;
+ padding:6px 12px;font-size:12px;cursor:pointer;font-family:inherit}
+.cbtn:hover{color:var(--txt);border-color:rgba(99,102,241,.5)}
+.filters{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:14px}
+.filters button{background:rgba(255,255,255,.05);border:1px solid var(--line);color:var(--mut);border-radius:999px;
+ padding:6px 15px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:inherit;transition:all .15s}
+.filters button:hover{color:var(--txt)}
+.filters button.on{background:var(--grad);color:#fff;border-color:transparent;box-shadow:0 4px 14px rgba(99,102,241,.35)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:14px}
+.it{background:var(--panel2);border:1px solid var(--line);border-radius:15px;padding:9px;cursor:pointer;
+ transition:transform .16s,border-color .16s,box-shadow .16s;position:relative;animation:rise .3s ease-out backwards}
+.it:nth-child(2){animation-delay:.04s}.it:nth-child(3){animation-delay:.08s}.it:nth-child(4){animation-delay:.12s}
+.it:nth-child(5){animation-delay:.16s}.it:nth-child(6){animation-delay:.2s}
+@keyframes rise{from{transform:translateY(14px);opacity:0}}
+.it:hover{transform:translateY(-4px);border-color:rgba(99,102,241,.55);box-shadow:0 14px 34px rgba(0,0,0,.5)}
+.it:focus-visible{outline:2px solid var(--info);outline-offset:2px}
+.thumb{position:relative;border-radius:10px;overflow:hidden;background:#000;aspect-ratio:4/3}
+.thumb img{width:100%;height:100%;object-fit:cover;display:block;transition:transform .3s}
+.it:hover .thumb img{transform:scale(1.05)}
+.ring{position:absolute;top:8px;right:8px;width:52px;height:52px;filter:drop-shadow(0 3px 8px rgba(0,0,0,.7))}
+.ring circle{fill:none;stroke-width:5;stroke-linecap:round;transform:rotate(-90deg);transform-origin:center}
+.ring .bg{stroke:rgba(0,0,0,.45)}
+.ring text{font-size:15px;font-weight:800;fill:#fff;text-anchor:middle;dominant-baseline:central;paint-order:stroke;stroke:rgba(0,0,0,.55);stroke-width:3px}
+.kind{position:absolute;top:8px;left:8px;font-size:9.5px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;
+ background:rgba(0,0,0,.62);backdrop-filter:blur(4px);border-radius:7px;padding:3px 8px;color:var(--ok)}
+.kind.video{color:var(--mid)}.kind.audio{color:var(--info)}.kind.text{color:#d8b4fe}.kind.url{color:#f0abfc}.kind.file{color:#cbd5e1}
+.tstamp{position:absolute;bottom:8px;left:8px;font-size:11px;font-weight:800;background:rgba(0,0,0,.7);
+ border-radius:6px;padding:2px 7px;color:var(--mid);font-variant-numeric:tabular-nums}
+.it .nm{font-size:12.5px;color:#cfd6e6;margin-top:9px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.it .sv{font-size:10.5px;color:var(--mut2);font-family:ui-monospace,Consolas,monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px}
+.empty{color:var(--mut2);text-align:center;padding:34px 10px;font-size:14px}
+/* lightbox */
+#lb{display:none;position:fixed;inset:0;background:rgba(4,5,10,.88);backdrop-filter:blur(6px);z-index:60;
+ padding:26px;overflow:auto}
+#lb.open{display:flex;align-items:center;justify-content:center}
+.lbbox{background:#12141f;border:1px solid rgba(255,255,255,.1);border-radius:20px;max-width:920px;width:100%;
+ box-shadow:0 30px 80px rgba(0,0,0,.7);overflow:hidden;animation:up .2s ease-out;max-height:92vh;display:flex;flex-direction:column}
+@keyframes up{from{transform:translateY(18px);opacity:0}}
+.lbmedia{background:#000;display:flex;align-items:center;justify-content:center;min-height:220px;max-height:62vh}
+.lbmedia img,.lbmedia video{max-width:100%;max-height:62vh;display:block}
+.lbmedia audio{width:82%;margin:40px 0}
+.lbmedia pre{margin:0;padding:22px;font-size:13px;white-space:pre-wrap;max-height:62vh;overflow:auto;width:100%;color:#cdd5e6;font-family:ui-monospace,Consolas,monospace}
+.lbmeta{padding:16px 20px 18px;border-top:1px solid rgba(255,255,255,.08)}
+.lbtop{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.lbscore{font-size:22px;font-weight:900;background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+.lbkind{font-size:11px;font-weight:800;text-transform:uppercase;border:1px solid var(--line);border-radius:8px;padding:3px 9px;color:var(--mut)}
+.lbname{font-size:15px;font-weight:700;word-break:break-all}
+.lbpath{font-size:11.5px;color:var(--mut2);font-family:ui-monospace,Consolas,monospace;word-break:break-all;margin-top:7px}
+.lbnav{display:flex;gap:9px;margin-top:13px;flex-wrap:wrap}
+.lbnav button{background:rgba(255,255,255,.07);border:1px solid var(--line);color:var(--txt);border-radius:10px;
+ padding:8px 16px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit}
+.lbnav button:hover{background:rgba(99,102,241,.25);border-color:rgba(99,102,241,.5)}
+.lbnav button:disabled{opacity:.35;cursor:default}
+footer{color:var(--mut2);font-size:12px;text-align:center;margin-top:22px}
+@media(max-width:700px){.go{margin-left:0;width:100%}.opts{gap:14px}.grid{grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <div class="logo" aria-hidden="true">◈</div>
+    <div>
+      <h1>EmbeddingGemma 2</h1>
+      <div class="tag">Metin · resim · video · ses — anlamsal arama</div>
+    </div>
+    <div class="spacer"></div>
+    <span class="status" id="srvpill"><span class="dot"></span><span id="srvtxt">Kontrol ediliyor…</span></span>
+  </header>
+
+  <div id="svwarn" role="alert"></div>
+
+  <main class="panel">
+    <!-- ZONE 1 -->
+    <div class="zone">
+      <div class="zlabel"><span class="n">1</span> Ne aranacak</div>
+      <div class="sbox">
+        <textarea id="q_text" placeholder="Aramak istediğiniz yazıyı yazın… (her satır ayrı sorgu olur)&#10;&#10;örn. kırmızı araba"></textarea>
+        <div class="srow">
+          <button type="button" class="mini" id="btn_q_files">📎 Dosya ekle</button>
+          <input type="file" id="q_files" multiple style="display:none">
+          <span class="count" id="q_count"></span>
+          <span class="hint">resim / video / ses / metin</span>
+        </div>
+      </div>
+      <div class="chips" id="q_chips" aria-live="polite"></div>
+    </div>
+
+    <!-- ZONE 2 -->
+    <div class="zone">
+      <div class="zlabel"><span class="n">2</span> Nerede aranacak — sekmeye tıklayın, Windows açılır</div>
+      <div class="seg" id="src_tabs" role="tablist" aria-label="Kaynak türü">
+        <button type="button" data-st="dir" aria-pressed="false">📁 Dizin</button>
+        <button type="button" data-st="files" aria-pressed="false">📄 Dosyalar</button>
+        <button type="button" data-st="video" aria-pressed="false">🎬 Videolar</button>
+        <button type="button" data-st="url" aria-pressed="false">🌐 Web sitesi</button>
+      </div>
+
+      <div id="src_dir_box" class="srcrow" style="display:none">
+        <input type="text" id="src_dir" class="grow" placeholder="Seçili değil — Dizin sekmesine tıklayın">
+        <button type="button" class="cbtn" id="btn_src_dir_clear" title="Temizle">✕</button>
+      </div>
+      <div id="src_dir_note" class="note" style="display:none">Klasör altındaki tüm medya dosyaları taranır. Değiştirmek için Dizin sekmesine tekrar tıklayın.</div>
+
+      <div id="src_files_box" style="display:none">
+        <input type="file" id="s_files" multiple style="display:none">
+        <div class="chips" id="s_chips" aria-live="polite"></div>
+        <div class="note">Dosyalar sekmesine tekrar tıklayıp yeni dosya ekleyebilirsiniz; çipten ✕ ile kaldırın.</div>
+      </div>
+
+      <div id="src_video_box" style="display:none">
+        <input type="file" id="v_files" multiple accept="video/*,.mkv,.avi,.mov,.m4v,.mpg,.mpeg" style="display:none">
+        <div class="chips" id="v_chips" aria-live="polite"></div>
+        <div class="note">Videolar kare kare taranır (1 fps) — eşleşen karenin zaman damgası gösterilir. Tekrar tıklayıp ekleyebilirsiniz.</div>
+      </div>
+
+      <div id="src_url_box" class="srcrow" style="display:none">
+        <input type="text" id="src_url" class="grow" placeholder="https://ornek.com/galeri">
+      </div>
+      <div id="src_url_note" class="note" style="display:none">Sayfadaki resim/video/ses dosyaları indirilip taranır.</div>
+
+      <div class="opts">
+        <label class="opt">Benzerlik eşiği
+          <input type="range" id="threshold" min="0.20" max="0.99" step="0.01" value="0.50">
+          <output id="thr_out">0.50</output>
+        </label>
+        <label class="opt">Sonuç sayısı
+          <input type="number" id="top_k" value="50" min="1" max="500" style="width:78px">
+        </label>
+        <button type="button" class="go" id="btn">🔍 Ara</button>
+        <button type="button" class="stopbtn" id="btn_stop" style="display:none" title="Taramayı derhal durdur">■ Durdur</button>
+      </div>
+      <div id="bar"><div></div></div>
+      <div id="msg" role="status" aria-live="polite"></div>
+    </div>
+  </main>
+
+  <!-- SONUÇLAR -->
+  <section class="panel" id="rescard">
+    <div class="rhead">
+      <b id="found">0 eşleşme</b>
+      <span class="path" id="outdir"></span>
+      <button type="button" class="cbtn" id="btn_copy">Klasörü kopyala</button>
+      <button type="button" class="cbtn" id="btn_copyres">Sonuçları CSV</button>
+    </div>
+    <div class="filters" id="filters">
+      <button type="button" data-f="all" class="on">Tümü</button>
+      <button type="button" data-f="image">🖼 Resim</button>
+      <button type="button" data-f="video">🎬 Video</button>
+      <button type="button" data-f="audio">🎵 Ses</button>
+      <button type="button" data-f="text">📝 Metin</button>
+    </div>
+    <div class="grid" id="grid"></div>
+    <div class="empty" id="empty" style="display:none">Bu türde eşleşme yok — filtre değiştirin.</div>
+  </section>
+
+  <footer>EmbeddingGemma 2 · sonuçlar <b>matched/</b> klasörüne kopyalanır</footer>
+</div>
+
+<!-- LIGHTBOX -->
+<div id="lb" role="dialog" aria-modal="true" aria-label="Eşleşme önizleme">
+  <div class="lbbox">
+    <div class="lbmedia" id="lbmedia"></div>
+    <div class="lbmeta">
+      <div class="lbtop">
+        <span class="lbscore" id="lb_score">—</span>
+        <span class="lbkind" id="lb_kind">—</span>
+        <span class="lbname" id="lb_name" style="flex:1;min-width:150px"></span>
+      </div>
+      <div class="lbpath" id="lb_path"></div>
+      <div class="lbnav">
+        <button type="button" id="lb_prev">← Önceki</button>
+        <button type="button" id="lb_next">Sonraki →</button>
+        <button type="button" id="lb_copy">Yolu kopyala</button>
+        <button type="button" id="lb_close">Kapat (Esc)</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+"use strict";
+var $=function(id){return document.getElementById(id);};
+var EXPECTED_VER="sade-20261007c";
+var SRC=null,timer=null,RESULTS=[],JOB_OUT="",FILTER="all",SERVOK=false;
+var QF=[],SF=[],VF=[];   /* secilen File nesneleri (tek dogruluk kaynagi) */
+
+function setText(el,s){el.textContent=(s==null?"":String(s));}
+function kindOf(p){var e=((p||"").split(".").pop()||"").toLowerCase();
+ if(["jpg","jpeg","png","webp","gif","bmp","avif","tif","tiff","heic","heif"].indexOf(e)>=0)return "image";
+ if(["mp4","mkv","avi","mov","webm","m4v","mpg","mpeg"].indexOf(e)>=0)return "video";
+ if(["mp3","wav","ogg","flac","m4a","opus","aac"].indexOf(e)>=0)return "audio";
+ if(["txt","md"].indexOf(e)>=0)return "text";if(["url"].indexOf(e)>=0)return "url";return "file";}
+function baseName(p){p=p||"";var i=Math.max(p.lastIndexOf("/"),p.lastIndexOf(String.fromCharCode(92)));return i>=0?p.slice(i+1):p;}
+function esc(s){return String(s==null?"":s).split("&").join("&amp;").split("<").join("&lt;").split(">").join("&gt;").split('"').join("&quot;");}
+function showErr(m){var e=$("msg");setText(e,m);e.className="err";}
+function showMsg(m){var e=$("msg");setText(e,m);e.className="";}
+function scoreColor(s){return s>=0.85?"#34d399":s>=0.65?"#fbbf24":"#fb7185";}
+
+/* ---------- sunucu surum kontrolu (eski surec korumasi) ---------- */
+function setSrv(ok,txt){
+ SERVOK=ok;
+ var p=$("srvpill");p.className="status"+(ok?"":" bad");
+ setText($("srvtxt"),txt);
+ var w=$("svwarn");
+ if(ok){w.style.display="none";return;}
+ w.style.display="block";
+ w.innerHTML='<div>⚠ <b>Eski sunucu sürümü çalışıyor</b> — arayüz bu sürümle uyuşmuyor; '
+  +'seçimler backend\'e ulaşmaz ("Kaynak dosya secilmedi" hatası gibi).<br>'
+  +'Çözüm: eski sunucu penceresini kapatın (veya <code>CTRL+C</code>), sonra <code>baslat.bat</code> dosyasını yeniden çalıştırın. '
+  +'<span id="svver"></span></div>';
+ var v=document.getElementById("svver");
+ if(v)v.textContent="Beklenen: "+EXPECTED_VER+" · Gelen: "+(txt||"bilinmiyor");
+}
+function checkHealth(){
+ fetch("/health").then(function(r){return r.json();}).then(function(j){
+  if(j&&j.v===EXPECTED_VER)setSrv(true,"Çevrimiçi · port 5102");
+  else{setSrv(false,j&&j.v?("sunucu "+j.v):"sürüm etiketsiz");setTimeout(checkHealth,5000);}
+ }).catch(function(){
+  setSrv(false,"sunucuya ulaşılamıyor");setTimeout(checkHealth,5000);
+ });
+}
+
+/* ---------- secim listeleri (File dizileri) ---------- */
+function dedupePush(arr,files){
+ var added=0;
+ for(var i=0;i<files.length;i++){var f=files[i],dup=false;
+  for(var j=0;j<arr.length;j++)if(arr[j].name===f.name&&arr[j].size===f.size){dup=true;break;}
+  if(!dup){arr.push(f);added++;}}
+ return added;}
+function chipList(el,arr,rem){el.innerHTML="";
+ arr.forEach(function(f,idx){
+  var c=document.createElement("div");c.className="chip";
+  var k=document.createElement("span");k.className="k "+kindOf(f.name);setText(k,kindOf(f.name));
+  var n=document.createElement("span");n.className="fname";setText(n,f.name);n.title=f.name;
+  var x=document.createElement("button");x.type="button";x.className="x";setText(x,"✕");x.title="Kaldır";
+  x.addEventListener("click",function(){rem(idx);});
+  c.appendChild(k);c.appendChild(n);c.appendChild(x);
+  el.appendChild(c);});}
+function refreshQ(){chipList($("q_chips"),QF,function(i){QF.splice(i,1);refreshQ();});
+ setText($("q_count"),QF.length?QF.length+" dosya eklendi":"");}
+function refreshS(){chipList($("s_chips"),SF,function(i){SF.splice(i,1);refreshS();});}
+function refreshV(){chipList($("v_chips"),VF,function(i){VF.splice(i,1);refreshV();});}
+/* native diyalog: her tiklamada yeniden secim birlestirilir */
+function pickFiles(inputId,arr,refresh){
+ var inp=$(inputId);
+ inp.value="";
+ inp.onchange=function(){
+  var n=dedupePush(arr,inp.files);
+  inp.value="";
+  refresh();
+  showMsg(n?n+" dosya eklendi":"Dosya seçilmedi");};
+ inp.click();}
+
+/* ---------- kaynak sekmeleri: tikla = hemen ac ---------- */
+function setSrc(t){
+ SRC=t;
+ var bs=document.querySelectorAll("#src_tabs button");
+ for(var i=0;i<bs.length;i++)bs[i].setAttribute("aria-pressed",bs[i].getAttribute("data-st")===t?"true":"false");
+ $("src_dir_box").style.display=t==="dir"?"":"none";
+ $("src_dir_note").style.display=t==="dir"?"":"none";
+ $("src_files_box").style.display=t==="files"?"":"none";
+ $("src_video_box").style.display=t==="video"?"":"none";
+ $("src_url_box").style.display=t==="url"?"":"none";
+ $("src_url_note").style.display=t==="url"?"":"none";
+}
+function onTab(t){
+ setSrc(t);
+ if(t==="dir")pickDir();
+ else if(t==="files")pickFiles("s_files",SF,refreshS);
+ else if(t==="video")pickFiles("v_files",VF,refreshV);
+ else $("src_url").focus();
+}
+function pickDir(){
+ showMsg("Windows klasör seçicisi açıldı — klasör seçip Tamam'a basın…");
+ fetch("/api/pickdir").then(function(r){return r.json();}).then(function(j){
+  if(j.path){$("src_dir").value=j.path;showMsg("Seçilen klasör: "+j.path);}
+  else if(j.error)showErr("Klasör seçicisi: "+j.error+" — yolu elle de yazabilirsiniz.");
+  else showMsg("Seçim iptal edildi.");
+ }).catch(function(){showErr("Klasör seçicisi açılamadı — yolu elle yazabilirsiniz.");});}
+
+/* ---------- tarama ---------- */
+function startScan(){
+ if(!SERVOK){showErr("Eski sunucu sürümü — önce baslat.bat ile yeniden başlatın (üstteki uyarı).");return;}
+ var qt=$("q_text").value.trim();
+ if(!qt&&!QF.length){showErr("Ne aranacak? — yazı yazın veya dosya ekleyin.");$("q_text").focus();return;}
+ var fd=new FormData();
+ fd.append("query_text",qt);
+ QF.forEach(function(f){fd.append("query_files",f,f.name);});
+ fd.append("source_type",SRC==="video"?"files":SRC);
+ if(SRC==="dir"){
+  var d=$("src_dir").value.trim();
+  if(!d){showErr("Nerede aranacak? — Dizin sekmesine tıklayıp klasör seçin.");return;}
+  fd.append("source",d);
+ }else if(SRC==="files"||SRC==="video"){
+  var arr=(SRC==="video"?VF:SF);
+  if(!arr.length){showErr("Nerede aranacak? — "+(SRC==="video"?"Videolar":"Dosyalar")+" sekmesine tıklayın, Windows açılır.");return;}
+  arr.forEach(function(f){fd.append("source_files",f,f.name);});
+ }else if(SRC==="url"){
+  var u=$("src_url").value.trim();
+  if(!u){showErr("Nerede aranacak? — web sitesi adresi yazın.");return;}
+  fd.append("source",u);
+ }else{showErr("Nerede aranacak? — bir sekme seçin.");return;}
+ fd.append("threshold",$("threshold").value);
+ fd.append("top_k",$("top_k").value);
+ doScan(fd);}
+function doScan(fd){
+ $("btn").disabled=true;$("btn_stop").disabled=false;$("btn_stop").style.display="inline-block";
+ $("bar").classList.add("on");$("rescard").style.display="none";RESULTS=[];lastSig="";showMsg("Gönderiliyor…");
+ fetch("/api/scan",{method:"POST",body:fd}).then(function(r){return r.json();}).then(function(j){
+  if(j.error)throw new Error(j.error);poll();
+ }).catch(function(e){finish(""+(e&&e.message?e.message:e),true);});}
+function stopScan(){
+ $("btn_stop").disabled=true;showMsg("Durduruluyor…");
+ fetch("/api/stop",{method:"POST"}).then(function(r){return r.json();}).then(function(j){
+  if(j.error)showMsg(j.error);
+ }).catch(function(){showErr("Durma isteği gönderilemedi");$("btn_stop").disabled=false;});}
+var lastSig="";
+function liveRender(s){
+ var rs=s.results||[];
+ var sig=rs.length+"|"+(rs.length?rs[0].score+"_"+rs[rs.length-1].i:"");
+ if(sig===lastSig)return;
+ lastSig=sig;
+ RESULTS=rs;$("rescard").style.display="block";render();
+}
+function poll(){
+ fetch("/api/status").then(function(r){return r.json();}).then(function(s){
+  if(s.out_dir)JOB_OUT=s.out_dir;
+  var m=s.phase||"";if(s.total)m+="  ("+s.done+"/"+s.total+")";showMsg(m);
+  if(s.state==="running"){liveRender(s);timer=setTimeout(poll,500);return;}
+  if(s.state==="stopped"){
+   RESULTS=s.results||[];lastSig="";
+   if(RESULTS.length){$("rescard").style.display="block";render();}
+   finish("Durduruldu — "+s.found+" eşleşme bulundu. Yeni arama için hazır.",false);return;}
+  if(s.state==="error"){finish("HATA: "+(s.error||""),true);return;}
+  RESULTS=s.results||[];lastSig="";FILTER="all";setFilterBtns();render();
+  $("rescard").style.display="block";finish("Tamam — "+s.found+" eşleşme.",false);
+ }).catch(function(){timer=setTimeout(poll,1500);});}
+function finish(m,bad){$("btn").disabled=false;
+ $("btn_stop").style.display="none";$("btn_stop").disabled=false;
+ $("bar").classList.remove("on");
+ var e=$("msg");setText(e,m);e.className=bad?"err":"";}
+
+/* ---------- sonuc gorsellestirme ---------- */
+function setFilterBtns(){var bs=document.querySelectorAll("#filters button");
+ for(var i=0;i<bs.length;i++)bs[i].className=bs[i].getAttribute("data-f")===FILTER?"on":"";}
+function filtered(){return RESULTS.filter(function(r){
+  if(FILTER==="all")return true;
+  if(FILTER==="image")return r.kind==="image"||(r.kind==="file"&&kindOf(r.name)==="image");
+  if(FILTER==="video")return r.kind==="video";
+  if(FILTER==="audio")return r.kind==="audio";
+  if(FILTER==="text")return r.kind==="text"||r.kind==="url";
+  return true;});}
+function ringSvg(score){
+ var C=2*Math.PI*20,off=C*(1-Math.min(Math.max(score,0),1)),col=scoreColor(score);
+ var pct=(score*100).toFixed(0);
+ return '<svg class="ring" viewBox="0 0 52 52" aria-hidden="true">'+
+  '<circle class="bg" cx="26" cy="26" r="20"/>'+
+  '<circle cx="26" cy="26" r="20" stroke="'+col+'" stroke-dasharray="'+C.toFixed(1)+'" stroke-dashoffset="'+off.toFixed(1)+'"/>'+
+  '<text x="26" y="26">'+pct+'</text></svg>';}
+function render(){
+ var list=filtered(),g=$("grid");g.innerHTML="";
+ setText($("found"),RESULTS.length+" eşleşme");
+ setText($("outdir"),JOB_OUT);
+ $("empty").style.display=list.length?"none":"";
+ list.forEach(function(r){
+  var gi=RESULTS.indexOf(r);
+  var d=document.createElement("div");d.className="it";d.tabIndex=0;
+  d.setAttribute("role","button");d.setAttribute("aria-label",(r.name||"")+" %"+((+r.score)*100).toFixed(0));
+  var ts=r.detail&&/^t=/.test(r.detail)?'<span class="tstamp">'+esc(r.detail.slice(2))+'</span>':"";
+  d.innerHTML='<div class="thumb"><img loading="lazy" alt="'+esc(r.name||"")+'" src="'+esc(r.thumb||"")+'">'+
+   '<span class="kind '+(r.kind||"")+'">'+esc(r.kind||"")+'</span>'+ts+ringSvg(+r.score||0)+'</div>'+
+   '<div class="nm" title="'+esc(r.name||"")+'">'+esc(r.name||"")+'</div>'+
+   '<div class="sv" title="'+esc(r.saved||"")+'">'+esc(r.saved||"")+'</div>';
+  d.addEventListener("click",function(){openLb(gi);});
+  d.addEventListener("keydown",function(e){if(e.key==="Enter"||e.key===" "){e.preventDefault();openLb(gi);}});
+  g.appendChild(d);
+ });}
+
+/* ---------- lightbox ---------- */
+function lbUrl(r){if(r.full)return r.full;if(r.src)return "/api/file?path="+encodeURIComponent(r.src);return r.thumb||"";}
+function openLb(i){
+ LB_I=i;var r=RESULTS[i];if(!r)return;
+ setText($("lb_score"),((+r.score)*100).toFixed(1)+"%");
+ setText($("lb_kind"),(r.kind||"")+(r.detail?" · "+r.detail:""));
+ setText($("lb_name"),r.name||"");
+ setText($("lb_path"),r.saved?("matched/"+r.saved):"");
+ var m=$("lbmedia");m.innerHTML="";
+ var u=lbUrl(r),k=r.kind;
+ if(k==="image"||k==="url"||k==="file"||!k){var im=document.createElement("img");im.alt=r.name||"";im.src=u;m.appendChild(im);}
+ else if(k==="video"){var v=document.createElement("video");v.controls=true;v.src=u;m.appendChild(v);}
+ else if(k==="audio"){var a=document.createElement("audio");a.controls=true;a.src=u;m.appendChild(a);}
+ else if(k==="text"){var pre=document.createElement("pre");setText(pre,"Yükleniyor…");m.appendChild(pre);
+  fetch(u).then(function(x){return x.text();}).then(function(t){setText(pre,t.slice(0,8000));})
+   .catch(function(){setText(pre,"Metin okunamadı");});}
+ $("lb_prev").disabled=i<=0;
+ $("lb_next").disabled=i>=RESULTS.length-1;
+ $("lb").classList.add("open");
+ $("lb_close").focus();}
+var LB_I=-1;
+function closeLb(){var v=$("lbmedia").querySelector("video,audio");if(v&&v.pause)try{v.pause();}catch(e){}
+ $("lb").classList.remove("open");$("lbmedia").innerHTML="";}
+function navLb(d){var n=LB_I+d;if(n>=0&&n<RESULTS.length)openLb(n);}
+
+/* ---------- csv / kopyala ---------- */
+function copyText(t,btn,label){var done=function(){var o=btn.textContent;setText(btn,label||"Kopyalandı ✓");
+  setTimeout(function(){setText(btn,o);},1400);};
+ if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(t).then(done,done);
+ else{var ta=document.createElement("textarea");ta.value=t;document.body.appendChild(ta);ta.select();
+  try{document.execCommand("copy");}catch(e){}document.body.removeChild(ta);done();}}
+function csv(){
+ var rows=[["skor","tur","dosya","kaydedilen","kaynak"]];
+ RESULTS.forEach(function(r){rows.push([(+r.score).toFixed(4),r.kind||"",r.name||"",r.saved||"",r.src||""]);});
+ var body=rows.map(function(r){return r.map(function(c){return '"'+String(c).split('"').join('""')+'"';}).join(";");}).join("\r\n");
+ var blob=new Blob(["﻿"+body],{type:"text/csv;charset=utf-8"});
+ var a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="eslesmeler.csv";
+ document.body.appendChild(a);a.click();document.body.removeChild(a);}
+
+/* ---------- baglantilar ---------- */
+function bind(){
+ $("btn_q_files").addEventListener("click",function(){pickFiles("q_files",QF,refreshQ);});
+ $("btn_src_dir_clear").addEventListener("click",function(){$("src_dir").value="";});
+ var tabs=document.querySelectorAll("#src_tabs button");
+ for(var i=0;i<tabs.length;i++)(function(b){b.addEventListener("click",function(){onTab(b.getAttribute("data-st"));});})(tabs[i]);
+ var fs2=document.querySelectorAll("#filters button");
+ for(var j=0;j<fs2.length;j++)(function(b){b.addEventListener("click",function(){FILTER=b.getAttribute("data-f");setFilterBtns();render();});})(fs2[j]);
+ $("threshold").addEventListener("input",function(){setText($("thr_out"),(+this.value).toFixed(2));});
+ $("btn").addEventListener("click",startScan);
+ $("btn_stop").addEventListener("click",stopScan);
+ $("btn_copy").addEventListener("click",function(){copyText(JOB_OUT,this);});
+ $("btn_copyres").addEventListener("click",csv);
+ $("lb_close").addEventListener("click",closeLb);
+ $("lb_prev").addEventListener("click",function(){navLb(-1);});
+ $("lb_next").addEventListener("click",function(){navLb(1);});
+ $("lb_copy").addEventListener("click",function(){
+  var r=RESULTS[LB_I];copyText(r?(r.src||r.saved||""):"",this,"Kopyalandı ✓");});
+ $("lb").addEventListener("click",function(e){if(e.target===$("lb"))closeLb();});
+ document.addEventListener("keydown",function(e){
+  if(!$("lb").classList.contains("open"))return;
+  if(e.key==="Escape")closeLb();
+  else if(e.key==="ArrowLeft")navLb(-1);
+  else if(e.key==="ArrowRight")navLb(1);});
+ refreshQ();refreshS();refreshV();
+ checkHealth();
+}
+if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",bind);else bind();
+})();
+</script>
+</body>
+</html>

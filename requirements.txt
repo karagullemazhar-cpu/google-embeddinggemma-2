@@ -1,0 +1,27 @@
+# EmbeddingGemma 2 - Cok Modlu Arama (Windows native)
+# Kurulum: py -3 -m venv winvenv && winvenv\Scripts\pip install -r requirements.txt
+# NOT: torch Windows'ta CPU surumludur (~250 MB). CUDA istenirse:
+#   pip uninstall torch torchvision -y
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu130
+flask==3.1.3
+sentence-transformers==6.1.0
+torch
+# !!! torchvision ZORUNLU: EmbeddingGemma2Processor, Gemma4 gorsel islemcisi
+# uzerinden torchvision.transforms import eder. Yoksa calisma aninda
+# "Could not import module 'EmbeddingGemma2Processor'" hatasi verir.
+torchvision==0.29.1
+pillow==12.3.0
+pillow-heif  # iPhone HEIC/HEIF fotograflari icin
+av==18.1.0
+soundfile==0.14.0
+librosa==0.11.0
+numpy==1.26.4
+requests==2.34.2
+beautifulsoup4==4.15.0
+huggingface-hub==1.33.0
+# !!! transformers SURUMU SABIT: google/embeddinggemma-2 ozel islemci
+# (EmbeddingGemma2Processor) yalnizca bu surumle dogrulandi.
+# Yukseltmeyin; "Could not import module" hatasina yol acabilir.
+transformers==5.19.0
+tokenizers==0.23.2
+safetensors==0.8.0
